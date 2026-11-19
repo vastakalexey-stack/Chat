@@ -1,6 +1,9 @@
 package com.aiduo.app
 
 import android.content.Intent
+import android.net.Uri
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
@@ -25,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -72,6 +76,9 @@ fun AiDuoScreen(onSpeak: (String) -> Unit) {
     var input by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var pageContext by remember { mutableStateOf("") }
+    val browserView = remember { mutableStateOf<WebView?>(null) }
+    val history = remember { mutableStateListOf<Pair<String, String>>() }
     val lines = remember {
         mutableStateListOf(ChatLine("AI Duo", "Привет! Я объединяю YandexGPT и GigaChat. Напиши вопрос или нажми на микрофон."))
     }
@@ -103,7 +110,10 @@ fun AiDuoScreen(onSpeak: (String) -> Unit) {
                 AiChip("GigaChat", Green, Modifier.weight(1f))
             }
             Spacer(Modifier.height(12.dp))
-            PhoneAssistantPanel()
+            BrowserPanel(webViewState = browserView, onPageCaptured = { pageContext = it })
+            if (pageContext.isNotBlank()) {
+                Text("Страница загружена для анализа Яндексом", color = Green, fontSize = 11.sp)
+            }
             Spacer(Modifier.height(10.dp))
             LazyColumn(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -143,13 +153,19 @@ fun AiDuoScreen(onSpeak: (String) -> Unit) {
                         input = ""
                         error = null
                         lines.add(ChatLine("Ты", question))
+                        history.add("user" to question)
                         busy = true
                         scope.launch {
                             try {
                                 val result = withContext(Dispatchers.IO) {
+                                    val historyJson = JSONArray()
+                                    history.forEach { (role, text) ->
+                                        historyJson.put(JSONObject().put("role", role).put("content", text))
+                                    }
                                     val body = JSONObject()
                                         .put("message", question)
-                                        .put("history", JSONArray())
+                                        .put("history", historyJson)
+                                        .put("page_context", pageContext.take(20000))
                                     val request = Request.Builder()
                                         .url(BuildConfig.API_BASE_URL + "api/team-chat")
                                         .post(body.toString().toRequestBody("application/json".toMediaType()))
@@ -166,8 +182,19 @@ fun AiDuoScreen(onSpeak: (String) -> Unit) {
                                 lines.add(ChatLine("YandexGPT", result.optString("yandexgpt")))
                                 lines.add(ChatLine("GigaChat", result.optString("gigachat")))
                                 val joint = result.optString("joint")
-                                lines.add(ChatLine("Общий вывод", joint))
-                                onSpeak(joint)
+                                val sources = result.optJSONArray("sources") ?: JSONArray()
+                                val sourceText = (0 until sources.length()).mapNotNull { index ->
+                                    sources.optJSONObject(index)?.let { source ->
+                                        val title = source.optString("title").ifBlank { source.optString("url") }
+                                        val url = source.optString("url")
+                                        if (url.isNotBlank()) "• ${title} — ${url}" else null
+                                    }
+                                }.joinToString("\n")
+                                val finalText = if (sourceText.isNotBlank()) "${joint}\n\nИсточники:\n${sourceText}" else joint
+                                lines.add(ChatLine("Общий вывод", finalText))
+                                history.add("assistant" to finalText)
+                                pageContext = ""
+                                onSpeak(finalText)
                             } catch (e: Exception) {
                                 error = e.message ?: "Не удалось связаться с AI Duo."
                             } finally {
@@ -180,6 +207,87 @@ fun AiDuoScreen(onSpeak: (String) -> Unit) {
                 }
             }
             Text("Для работы требуется настроенный сервер AI Duo.", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp))
+        }
+    }
+}
+
+@Composable
+fun BrowserPanel(
+    webViewState: androidx.compose.runtime.MutableState<WebView?>,
+    onPageCaptured: (String) -> Unit
+) {
+    var address by remember { mutableStateOf("https://yandex.ru") }
+    var pageLoading by remember { mutableStateOf(false) }
+    Column(
+        Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text("Встроенный браузер AI Duo", color = TextMain, fontSize = 13.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            BasicTextField(
+                value = address,
+                onValueChange = { address = it },
+                modifier = Modifier.weight(1f).background(Bg, RoundedCornerShape(10.dp)).padding(10.dp),
+                textStyle = TextStyle(color = TextMain, fontSize = 13.sp),
+                decorationBox = { inner ->
+                    Box {
+                        if (address.isBlank()) Text("Адрес сайта", color = Muted)
+                        inner()
+                    }
+                }
+            )
+            Spacer(Modifier.width(6.dp))
+            Button(onClick = {
+                val raw = address.trim()
+                val normalized = if (raw.startsWith("http://") || raw.startsWith("https://")) raw else "https://$raw"
+                val uri = runCatching { Uri.parse(normalized) }.getOrNull()
+                if (uri != null && uri.scheme in listOf("http", "https") && !uri.host.isNullOrBlank()) {
+                    address = normalized
+                    webViewState.value?.loadUrl(normalized)
+                }
+            }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) { Text("Перейти") }
+        }
+        AndroidView(
+            modifier = Modifier.fillMaxWidth().height(190.dp).background(Color.White, RoundedCornerShape(10.dp)),
+            factory = { context ->
+                WebView(context).apply {
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    webViewClient = object : WebViewClient() {
+                        override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                            pageLoading = true
+                            if (!url.isNullOrBlank()) address = url
+                        }
+                        override fun onPageFinished(view: WebView?, url: String?) {
+                            pageLoading = false
+                            if (!url.isNullOrBlank()) address = url
+                        }
+                        override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                            val uri = runCatching { Uri.parse(url ?: "") }.getOrNull()
+                            return uri == null || uri.scheme !in listOf("http", "https")
+                        }
+                    }
+                    webViewState.value = this
+                    loadUrl("https://yandex.ru")
+                }
+            },
+            update = { webViewState.value = it }
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (pageLoading) "Загрузка страницы…" else "Открой сайт и передай его содержимое Яндексу",
+                color = Muted, fontSize = 10.sp, modifier = Modifier.weight(1f)
+            )
+            Button(onClick = {
+                webViewState.value?.evaluateJavascript(
+                    "(function(){return document.title+'\\n'+(document.body?document.body.innerText:'');})()"
+                ) { raw ->
+                    val decoded = runCatching { JSONArray("[$raw]").optString(0) }.getOrDefault("")
+                    if (decoded.isNotBlank()) onPageCaptured(decoded.take(20000))
+                }
+            }, enabled = !pageLoading, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp)) {
+                Text("Передать Яндексу", fontSize = 11.sp)
+            }
         }
     }
 }
