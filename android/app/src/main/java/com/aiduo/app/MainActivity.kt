@@ -158,8 +158,10 @@ fun AiDuoScreen(onSpeak: (String) -> Unit) {
                         scope.launch {
                             try {
                                 val historyJson = JSONArray()
-                                history.forEach { (role, text) ->
-                                    historyJson.put(JSONObject().put("role", role).put("content", text))
+                                history.forEachIndexed { index, item ->
+                                    if (index < history.lastIndex) {
+                                        historyJson.put(JSONObject().put("role", item.first).put("content", item.second))
+                                    }
                                 }
                                 val capturedPageContext = pageContext.take(20000)
                                 val result = withContext(Dispatchers.IO) {
