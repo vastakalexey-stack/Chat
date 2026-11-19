@@ -12,8 +12,8 @@ android {
         applicationId = "com.aiduo.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.2.0"
+        versionCode = 2
+        versionName = "0.3.0"
         // Replace with the public HTTPS URL of your deployed backend before using on a phone.
         buildConfigField("String", "API_BASE_URL", "\"https://YOUR-BACKEND-HOST/\"")
     }
