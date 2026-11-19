@@ -1,23 +1,32 @@
-# AI Duo
+# AI Duo — российская версия
 
-Android starter app for a two-model team chat: ChatGPT drafts, Gemini critiques/adds, and ChatGPT synthesizes a joint answer.
+Android-приложение с голосовым вводом и озвучиванием ответов. Два ИИ работают командой:
 
-## Build APK in GitHub Actions
+1. **YandexGPT** готовит первый ответ.
+2. **GigaChat** независимо проверяет его, находит ошибки и добавляет важные детали.
+3. **YandexGPT** формирует совместный итог.
 
-1. Open the **Actions** tab.
-2. Select **Build AI Duo APK** and tap **Run workflow** (or wait for the workflow triggered by a push).
-3. Open the completed run and download the **AI-Duo-debug-apk** artifact.
-4. Extract the ZIP and install `app-debug.apk` on your Pixel.
+Слоган: «Два интеллекта. Одна команда.»
 
-## Important setup before using the app
+## Сборка APK
 
-The Android app calls a backend endpoint. Set `API_BASE_URL` in `android/app/build.gradle.kts` to the public HTTPS URL of your deployed backend before building for the phone. The sample backend is in `backend/`.
+1. Откройте вкладку **Actions** в репозитории.
+2. Выберите **Build AI Duo APK**.
+3. Откройте последний успешный запуск и скачайте **AI-Duo-debug-apk**.
+4. Распакуйте ZIP на Android и установите `app-debug.apk`.
 
-Keep API keys on the backend, never in the APK. OpenAI API usage and Gemini API usage are billed separately from ChatGPT subscriptions.
+## Настройка API
 
-## Backend
+Перед использованием нужен backend на Node.js 20+ с публичным HTTPS-адресом. API-ключи хранятся только на сервере, не в APK.
 
-Requires Node.js 20+. Set `OPENAI_API_KEY` and `GEMINI_API_KEY` as environment variables, then run:
+Скопируйте `.env.example` в `.env` и заполните:
+
+- `YANDEX_API_KEY` — API-ключ сервисного аккаунта Yandex Cloud с доступом к AI Studio.
+- `YANDEX_FOLDER_ID` — ID каталога Yandex Cloud, в котором доступна модель.
+- `GIGACHAT_AUTH_KEY` — Authorization Key проекта GigaChat API.
+- `GIGACHAT_SCOPE` — для физического лица по умолчанию `GIGACHAT_API_PERS`.
+
+Затем установите зависимости и запустите backend:
 
 ```bash
 cd backend
@@ -25,4 +34,15 @@ npm install
 npm start
 ```
 
-This starter is not production-hardened: add authentication, rate limiting, HTTPS, privacy policy, retention/deletion controls, and secure deployment before public use. Voice input uses Android's installed speech recognition service; speech output uses Android TextToSpeech.
+В `android/app/build.gradle.kts` замените `https://YOUR-BACKEND-HOST/` на адрес вашего backend (со слэшем в конце), затем запустите GitHub Actions для новой сборки APK.
+
+## Сертификаты GigaChat
+
+GigaChat API может требовать сертификаты УЦ Минцифры. Установите официальный корневой сертификат на сервер и задайте переменную `NODE_EXTRA_CA_CERTS` до запуска Node.js. Не отключайте проверку TLS-сертификата.
+
+## Важно
+
+- API-тарифы Yandex Cloud и GigaChat оплачиваются отдельно согласно условиям провайдеров.
+- На backend включено ограничение частоты запросов; перед публичным запуском также настройте мониторинг, резервные лимиты расходов и политику конфиденциальности.
+- Голосовой ввод использует установленный на Android сервис распознавания речи; озвучивание — Android TextToSpeech. Доступность распознавания зависит от сервиса речи, установленного на телефоне.
+- APK из Actions — отладочная сборка для тестирования, не релизная подпись.
