@@ -157,15 +157,16 @@ fun AiDuoScreen(onSpeak: (String) -> Unit) {
                         busy = true
                         scope.launch {
                             try {
+                                val historyJson = JSONArray()
+                                history.forEach { (role, text) ->
+                                    historyJson.put(JSONObject().put("role", role).put("content", text))
+                                }
+                                val capturedPageContext = pageContext.take(20000)
                                 val result = withContext(Dispatchers.IO) {
-                                    val historyJson = JSONArray()
-                                    history.forEach { (role, text) ->
-                                        historyJson.put(JSONObject().put("role", role).put("content", text))
-                                    }
                                     val body = JSONObject()
                                         .put("message", question)
                                         .put("history", historyJson)
-                                        .put("page_context", pageContext.take(20000))
+                                        .put("page_context", capturedPageContext)
                                     val request = Request.Builder()
                                         .url(BuildConfig.API_BASE_URL + "api/team-chat")
                                         .post(body.toString().toRequestBody("application/json".toMediaType()))
@@ -253,6 +254,9 @@ fun BrowserPanel(
                 WebView(context).apply {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
+                    settings.allowFileAccess = false
+                    settings.allowContentAccess = false
+                    settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
                     webViewClient = object : WebViewClient() {
                         override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                             pageLoading = true
