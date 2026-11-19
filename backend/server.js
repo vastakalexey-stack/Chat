@@ -24,9 +24,10 @@ const {
 } = process.env;
 const YANDEX_MODEL = process.env.YANDEX_MODEL || 'yandexgpt-5.1';
 const GIGACHAT_MODEL = process.env.GIGACHAT_MODEL || 'GigaChat-2-Pro';
-const YANDEX_URL = 'https://ai.api.cloud.yandex.net/v1/chat/completions';
+const YANDEX_URL = 'https://ai.api.cloud.yandex.net/v1/responses';
 const GIGACHAT_TOKEN_URL = process.env.GIGACHAT_TOKEN_URL || 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth';
 const GIGACHAT_API_URL = process.env.GIGACHAT_API_URL || 'https://api.giga.chat/v1/chat/completions';
+const YANDEX_WEB_SEARCH_ENABLED = process.env.YANDEX_WEB_SEARCH_ENABLED !== 'false';
 
 let gigaToken = null;
 let gigaTokenExpiresAt = 0;
@@ -34,7 +35,8 @@ let gigaTokenExpiresAt = 0;
 app.get('/health', (_req, res) => res.json({
   ok: true,
   app: 'AI Duo',
-  providers: ['YandexGPT', 'GigaChat']
+  providers: ['YandexGPT', 'GigaChat'],
+  yandexFeatures: ['long-context-chat', 'web-search']
 }));
 
 function yandexModelUri() {
@@ -42,9 +44,20 @@ function yandexModelUri() {
   return `gpt://${YANDEX_FOLDER_ID}/${YANDEX_MODEL}`;
 }
 
-async function askYandex(messages) {
+// Yandex Responses API supports the native Web Search tool and returns source annotations.
+async function askYandex(input, instructions = 'Ты — YandexGPT, помощник AI Duo. Отвечай по-русски, ясно и полезно. Проверяй актуальные сведения через поиск в интернете, когда вопрос зависит от свежих данных. Не выдумывай факты и указывай, если данных недостаточно.') {
   if (!YANDEX_API_KEY || !YANDEX_FOLDER_ID) {
     throw new Error('На сервере не настроен доступ к YandexGPT (YANDEX_API_KEY и YANDEX_FOLDER_ID).');
+  }
+  const body = {
+    model: yandexModelUri(),
+    instructions,
+    input,
+    temperature: 0.4,
+    max_output_tokens: 3000
+  };
+  if (YANDEX_WEB_SEARCH_ENABLED) {
+    body.tools = [{ type: 'web_search', search_context_size: 'medium' }];
   }
   const response = await fetch(YANDEX_URL, {
     method: 'POST',
@@ -52,22 +65,30 @@ async function askYandex(messages) {
       Authorization: `Api-Key ${YANDEX_API_KEY}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
-      model: yandexModelUri(),
-      messages,
-      temperature: 0.4,
-      max_tokens: 3000
-    }),
-    signal: AbortSignal.timeout(90000)
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(120000)
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    console.error('YandexGPT API error:', response.status, data);
-    throw new Error(`YandexGPT вернул ошибку (${response.status}). Проверьте ключ, каталог и доступ к модели.`);
+    console.error('Yandex AI Studio Responses API error:', response.status, data);
+    throw new Error(`YandexGPT вернул ошибку (${response.status}). Проверьте ключ, каталог и доступ к Responses API.`);
   }
-  const answer = data.choices?.[0]?.message?.content?.trim();
+  const answer = data.output_text?.trim()
+    || (data.output || [])
+      .filter(item => item.type === 'message')
+      .flatMap(item => item.content || [])
+      .filter(item => item.type === 'output_text')
+      .map(item => item.text || '')
+      .join('\n')
+      .trim();
   if (!answer) throw new Error('YandexGPT вернул пустой ответ.');
-  return answer;
+  const sources = (data.output || [])
+    .flatMap(item => item.content || [])
+    .flatMap(item => item.annotations || [])
+    .filter(item => item.type === 'url_citation' && item.url)
+    .map(item => ({ title: item.title || item.url, url: item.url }))
+    .filter((item, index, all) => all.findIndex(x => x.url === item.url) === index);
+  return { text: answer, sources };
 }
 
 async function getGigaToken() {
@@ -125,27 +146,34 @@ async function askGiga(messages) {
 
 app.post('/api/team-chat', async (req, res) => {
   const message = String(req.body?.message || '').trim();
+  const history = Array.isArray(req.body?.history) ? req.body.history.slice(-12) : [];
   if (!message || message.length > 8000) {
     return res.status(400).json({ error: 'Сообщение должно содержать от 1 до 8000 символов.' });
   }
+  const transcript = history
+    .filter(item => item && ['user', 'assistant'].includes(item.role) && typeof item.content === 'string')
+    .map(item => `${item.role === 'user' ? 'Пользователь' : 'Ассистент'}: ${item.content.slice(0, 4000)}`)
+    .join('\n\n');
+  const prompt = `${transcript ? `Предыдущая беседа:\n${transcript}\n\n` : ''}Новый вопрос пользователя:\n${message}`;
 
   try {
-    const first = await askYandex([
-      { role: 'system', content: 'Ты — YandexGPT, первый участник команды AI Duo. Отвечай по-русски, ясно и полезно. Отмечай неопределённость и не выдумывай факты.' },
-      { role: 'user', content: message }
-    ]);
+    const firstResult = await askYandex(
+      prompt,
+      'Ты — YandexGPT, главный помощник команды AI Duo. Поддерживай контекст беседы. Если вопрос требует актуальных сведений, используй встроенный веб-поиск Яндекса. Для найденных фактов опирайся на источники и не выдумывай ссылки. Отвечай по-русски.'
+    );
+    const first = firstResult.text;
 
     const second = await askGiga([
       { role: 'system', content: 'Ты — GigaChat, независимый эксперт команды AI Duo. Проверь ответ YandexGPT: найди ошибки, пропуски, спорные утверждения и полезные дополнения. Не соглашайся автоматически. Отвечай по-русски.' },
-      { role: 'user', content: `Вопрос пользователя:\n${message}\n\nЧерновик YandexGPT:\n${first}\n\nДай критическую оценку и дополнения.` }
+      { role: 'user', content: `Контекст беседы и вопрос пользователя:\n${prompt}\n\nЧерновик YandexGPT:\n${first}\n\nДай критическую оценку и дополнения.` }
     ]);
 
-    const joint = await askYandex([
-      { role: 'system', content: 'Ты — YandexGPT, ведущий совместного ответа AI Duo. Учти независимую проверку GigaChat. Не скрывай обоснованные разногласия, не выдумывай согласие и укажи оставшуюся неопределённость.' },
-      { role: 'user', content: `Вопрос: ${message}\n\nЧерновик YandexGPT:\n${first}\n\nПроверка GigaChat:\n${second}\n\nСформируй точный и понятный общий итог по-русски.` }
-    ]);
+    const jointResult = await askYandex(
+      `Вопрос и контекст:\n${prompt}\n\nЧерновик YandexGPT:\n${first}\n\nПроверка GigaChat:\n${second}\n\nСформируй точный и понятный общий итог. Сохрани полезные ссылки на источники, если они есть в черновике.`,
+      'Ты — YandexGPT, ведущий совместного ответа AI Duo. Учти независимую проверку GigaChat. Не скрывай обоснованные разногласия, не выдумывай согласие и укажи оставшуюся неопределённость. Отвечай по-русски.'
+    );
 
-    res.json({ yandexgpt: first, gigachat: second, joint });
+    res.json({ yandexgpt: first, gigachat: second, joint: jointResult.text, sources: firstResult.sources });
   } catch (error) {
     console.error('AI Duo request failed:', error);
     res.status(502).json({ error: error.message || 'Не удалось получить ответы от ИИ.' });
