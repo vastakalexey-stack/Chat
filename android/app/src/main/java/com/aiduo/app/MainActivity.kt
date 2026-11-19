@@ -103,6 +103,8 @@ fun AiDuoScreen(onSpeak: (String) -> Unit) {
                 AiChip("GigaChat", Green, Modifier.weight(1f))
             }
             Spacer(Modifier.height(12.dp))
+            PhoneAssistantPanel()
+            Spacer(Modifier.height(10.dp))
             LazyColumn(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
