@@ -127,7 +127,7 @@ fun PhoneAssistantPanel() {
                         putExtra(AlarmClock.EXTRA_MINUTES, now.get(Calendar.MINUTE))
                         putExtra(AlarmClock.EXTRA_MESSAGE, "AI Duo")
                         putExtra(AlarmClock.EXTRA_SKIP_UI, false)
-                    },)
+                    })
                     status = if (ok) "Открываю установку будильника." else "Не найдено приложение Часы."
                 }, modifier = Modifier.weight(1f)) { Text("Будильник") }
                 Button(onClick = {
