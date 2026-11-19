@@ -1,4 +1,5 @@
 name: Build AI Duo APK
+# CI build config
 
 on:
   workflow_dispatch:
