@@ -77,6 +77,7 @@ fun AiDuoScreen(onSpeak: (String) -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var pageContext by remember { mutableStateOf("") }
+    var showPhoneControls by remember { mutableStateOf(false) }
     val browserView = remember { mutableStateOf<WebView?>(null) }
     val history = remember { mutableStateListOf<Pair<String, String>>() }
     val lines = remember {
@@ -111,6 +112,12 @@ fun AiDuoScreen(onSpeak: (String) -> Unit) {
             }
             Spacer(Modifier.height(12.dp))
             BrowserPanel(webViewState = browserView, onPageCaptured = { pageContext = it })
+            TextButton(onClick = { showPhoneControls = !showPhoneControls }) {
+                Text(if (showPhoneControls) "Скрыть управление телефоном" else "Управление телефоном")
+            }
+            if (showPhoneControls) {
+                PhoneAssistantPanel()
+            }
             if (pageContext.isNotBlank()) {
                 Text("Страница загружена для анализа Яндексом", color = Green, fontSize = 11.sp)
             }
