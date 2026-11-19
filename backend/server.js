@@ -11,7 +11,7 @@ app.use(express.json({ limit: '32kb' }));
 app.use('/api/', rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: Number(process.env.RATE_LIMIT_MAX || 30),
-  standardHeaders: 'draft-7',
+  standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Слишком много запросов. Попробуйте позже.' }
 }));
