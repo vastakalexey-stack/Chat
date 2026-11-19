@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { randomUUID } from 'node:crypto';
 import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
@@ -80,7 +81,7 @@ async function getGigaToken() {
       Authorization: `Basic ${GIGACHAT_AUTH_KEY}`,
       'Content-Type': 'application/x-www-form-urlencoded',
       Accept: 'application/json',
-      RqUID: crypto.randomUUID()
+      RqUID: randomUUID()
     },
     body: new URLSearchParams({ scope: GIGACHAT_SCOPE }),
     signal: AbortSignal.timeout(30000)
