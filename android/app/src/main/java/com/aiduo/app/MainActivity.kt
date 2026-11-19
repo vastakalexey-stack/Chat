@@ -73,7 +73,7 @@ fun AiDuoScreen(onSpeak: (String) -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val lines = remember {
-        mutableStateListOf(ChatLine("AI Duo", "Привет! Я объединяю ChatGPT и Gemini. Напиши вопрос или нажми на микрофон."))
+        mutableStateListOf(ChatLine("AI Duo", "Привет! Я объединяю YandexGPT и GigaChat. Напиши вопрос или нажми на микрофон."))
     }
 
     val speechLauncher = rememberLauncherForActivityResult(
@@ -99,8 +99,8 @@ fun AiDuoScreen(onSpeak: (String) -> Unit) {
             }
             Spacer(Modifier.height(16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AiChip("ChatGPT", Blue, Modifier.weight(1f))
-                AiChip("Gemini", Green, Modifier.weight(1f))
+                AiChip("YandexGPT", Blue, Modifier.weight(1f))
+                AiChip("GigaChat", Green, Modifier.weight(1f))
             }
             Spacer(Modifier.height(12.dp))
             LazyColumn(
@@ -108,7 +108,7 @@ fun AiDuoScreen(onSpeak: (String) -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(lines) { line -> MessageCard(line) }
-                if (busy) item { Text("ChatGPT и Gemini обсуждают вопрос…", color = Muted, fontSize = 13.sp) }
+                if (busy) item { Text("YandexGPT и GigaChat обсуждают вопрос…", color = Muted, fontSize = 13.sp) }
             }
             error?.let { Text(it, color = Color(0xFFFF8A8A), fontSize = 12.sp) }
             Surface(color = Panel, shape = RoundedCornerShape(24.dp)) {
@@ -161,8 +161,8 @@ fun AiDuoScreen(onSpeak: (String) -> Unit) {
                                         JSONObject(raw)
                                     }
                                 }
-                                lines.add(ChatLine("ChatGPT", result.optString("chatgpt")))
-                                lines.add(ChatLine("Gemini", result.optString("gemini")))
+                                lines.add(ChatLine("YandexGPT", result.optString("yandexgpt")))
+                                lines.add(ChatLine("GigaChat", result.optString("gigachat")))
                                 val joint = result.optString("joint")
                                 lines.add(ChatLine("Общий вывод", joint))
                                 onSpeak(joint)
@@ -196,8 +196,8 @@ fun AiChip(name: String, color: Color, modifier: Modifier = Modifier) {
 @Composable
 fun MessageCard(line: ChatLine) {
     val accent = when (line.who) {
-        "ChatGPT" -> Blue
-        "Gemini" -> Green
+        "YandexGPT" -> Blue
+        "GigaChat" -> Green
         "Ты" -> Color(0xFFB7A1FF)
         else -> Color(0xFFFFC36B)
     }
