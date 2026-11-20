@@ -2,7 +2,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:allowBackup="false"
-        android:label="GPT"
+        android:label="Мой GPT"
+        android:icon="@drawable/ic_launcher_gpt"
+        android:roundIcon="@drawable/ic_launcher_gpt"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:usesCleartextTraffic="false">
         <activity
